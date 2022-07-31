@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Neo4jService } from '../neo4j/neo4j.service';
 
 export interface ProducerHierarchyPayload {
@@ -127,17 +127,18 @@ export class ProducerHierarchyService {
 
   async addHierarchy(
     producerHierarchyPayload: ProducerHierarchyPayload,
-  ): Promise<string> {
+  ): Promise<void> {
     const producerId = producerHierarchyPayload.producerId;
-    const res = await this.neo4jService.write(
+
+    await this.neo4jService.write(
       `MERGE (p:Producer {id: $producerId}) RETURN p`,
       {
         producerId: producerId,
       },
     );
+
     const uplines = producerHierarchyPayload.uplines;
     await this.addUplines('Producer', producerId, uplines);
-    return 'OK';
   }
 
   async addUplines(
@@ -149,8 +150,6 @@ export class ProducerHierarchyService {
       return;
     }
     for (const upline of uplines) {
-      console.log('adding upline');
-      console.log(upline);
       await this.neo4jService.write(
         `MATCH (f {id: $fromBpId}) MERGE (t:Upline {id: $uplineId}) MERGE (f)-[r:${upline.relationshipType} {contractCode: $contractCode, from: $from, to: $to}]->(t) ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`,
         {
