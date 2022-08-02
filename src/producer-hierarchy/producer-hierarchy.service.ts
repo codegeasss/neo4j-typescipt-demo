@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Neo4jService } from '../neo4j/neo4j.service';
 
 export interface ProducerHierarchyPayload {
@@ -10,8 +14,8 @@ export interface ProducerHierarchyPayload {
 export interface ProducerUplineRecord {
   id: string;
   contractCode: string;
-  from: Date;
-  to: Date;
+  from: string;
+  to: string;
   relationshipType: string;
   uplines: ProducerUplineRecord[];
 }
@@ -35,8 +39,21 @@ export class HierarchyResponse {
   }
 }
 
+const FROM_YEARS: string[] = [
+  '2016',
+  '2017',
+  '2018',
+  '2019',
+  '2020',
+  '2021',
+  '2022',
+];
+const TO_YEARS: string[] = ['2023', '2025', '2030'];
+
 @Injectable()
 export class ProducerHierarchyService {
+  private readonly logger = new Logger(ProducerHierarchyService.name);
+
   constructor(private readonly neo4jService: Neo4jService) {}
 
   async getHierarchy(
@@ -141,6 +158,10 @@ export class ProducerHierarchyService {
     await this.addUplines('Producer', producerId, uplines);
   }
 
+  async deleteAllData() {
+    await this.neo4jService.write('MATCH (n) DETACH DELETE n', {});
+  }
+
   async addUplines(
     fromType: string,
     fromBpId: string,
@@ -162,6 +183,87 @@ export class ProducerHierarchyService {
         },
       );
       await this.addUplines('Upline', upline.id, upline.uplines);
+    }
+  }
+
+  async seedData(count = 100): Promise<void> {
+    await this.deleteAllData();
+    let producerIdStart = 1000000000;
+    const uplineIdStart = 1050000000;
+    const bu = 'MMFACareer';
+    for (let i = 0; i < count; i++) {
+      const producerId = producerIdStart++;
+      const payload: ProducerHierarchyPayload = {
+        producerId: producerId.toString(),
+        businessUnit: bu,
+        uplines: this.generateSeedUplines(uplineIdStart, undefined),
+      };
+      this.logger.log(`Adding hierarchy for producer ${producerId}`);
+      await this.addHierarchy(payload);
+    }
+  }
+
+  generateSeedUplines(
+    uplineIdStart: number,
+    depth: number | undefined,
+  ): ProducerUplineRecord[] {
+    const uplines: ProducerUplineRecord[] = [];
+    if (depth !== undefined && depth <= 0) {
+      return uplines;
+    }
+    const uplineCount = this.generateRandomUplineCount(5);
+    for (let i = 0; i < uplineCount; i++) {
+      let uplineDepth = depth;
+      if (depth === undefined) {
+        uplineDepth = this.generateRandomUplineDepth(5);
+      }
+      uplineDepth--;
+      const uplineId = uplineIdStart++;
+      const fromYear = this.getRandomFromYear();
+      const fromDateStr = fromYear + '-08-07T00:00:00Z';
+      const toDateStr = this.getRandomToYear(fromYear) + '-08-07T00:00:00Z';
+      const uplineRecord: ProducerUplineRecord = {
+        id: uplineId.toString(),
+        contractCode: 'Z202',
+        from: fromDateStr,
+        to: toDateStr,
+        relationshipType: this.getRandomRelationshipType(),
+        uplines: this.generateSeedUplines(uplineIdStart, uplineDepth),
+      };
+      uplines.push(uplineRecord);
+    }
+    return uplines;
+  }
+
+  generateRandomUplineCount(max: number): number {
+    return Math.floor(Math.random() * max) + 1;
+  }
+
+  generateRandomUplineDepth(max: number): number {
+    return Math.floor(Math.random() * (max + 1));
+  }
+
+  getRandomFromYear(): string {
+    const idx = Math.floor(Math.random() * FROM_YEARS.length);
+    const year = FROM_YEARS[idx];
+    return year;
+  }
+
+  getRandomToYear(fromYear: string): string {
+    const idx = Math.floor(Math.random() * 20) + 1;
+    if (idx % 5 === 0) {
+      const from = parseInt(fromYear);
+      return (from + idx).toString();
+    }
+    return '9999';
+  }
+
+  getRandomRelationshipType(): string {
+    const idx = Math.floor(Math.random() * 20) + 1;
+    if (idx <= 3) {
+      return 'CAN_PROXY';
+    } else {
+      return 'CAN_SELL_UNDER';
     }
   }
 }

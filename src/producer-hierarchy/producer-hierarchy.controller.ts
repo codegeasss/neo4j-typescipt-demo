@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
-  Get, HttpStatus, InternalServerErrorException, NotFoundException,
+  Get,
+  HttpStatus,
+  InternalServerErrorException,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -43,10 +46,28 @@ export class ProducerHierarchyController {
     @Body() producerHierarchyPayload: ProducerHierarchyPayload,
   ): Promise<object> {
     try {
-      await this.producerHierarchyService.addHierarchy(producerHierarchyPayload);
+      await this.producerHierarchyService.addHierarchy(
+        producerHierarchyPayload,
+      );
     } catch (error) {
       throw new InternalServerErrorException(error.message);
     }
-    return { statusCode: HttpStatus.OK, message: `Successfully added hierarchy data for ${producerHierarchyPayload.producerId}` }
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Successfully added hierarchy data for ${producerHierarchyPayload.producerId}`,
+    };
+  }
+
+  @Post('/seed-data')
+  async seedData(@Body() payload: object): Promise<object> {
+    try {
+      await this.producerHierarchyService.seedData(payload['count']);
+    } catch (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Successfully seeded hierarchy data`,
+    };
   }
 }
