@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   InternalServerErrorException,
@@ -55,6 +56,21 @@ export class ProducerHierarchyController {
     return {
       statusCode: HttpStatus.OK,
       message: `Successfully added hierarchy data for ${producerHierarchyPayload.producerId}`,
+    };
+  }
+
+  @Delete('/:producerId')
+  async deleteHierarchy(
+    @Param('producerId') producerId: string,
+  ): Promise<object> {
+    try {
+      await this.producerHierarchyService.deleteHierarchy(producerId);
+    } catch (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Successfully deleted hierarchy data for ${producerId}`,
     };
   }
 

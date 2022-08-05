@@ -4,6 +4,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Neo4jService } from '../neo4j/neo4j.service';
+import * as path from 'path';
+
+const csvWriter = require('csv-writer');
 
 export interface ProducerHierarchyPayload {
   producerId: string;
@@ -53,8 +56,23 @@ const TO_YEARS: string[] = ['2023', '2025', '2030'];
 @Injectable()
 export class ProducerHierarchyService {
   private readonly logger = new Logger(ProducerHierarchyService.name);
+  uplineIdStart: number = 1050000000;
 
   constructor(private readonly neo4jService: Neo4jService) {}
+
+  dirPath = path.join(__dirname, '../../');
+
+  writer = csvWriter.createObjectCsvWriter({
+    path: path.resolve(this.dirPath, 'hierarchy-seed.csv'),
+    header: [
+      { id: 'fromBpId', title: 'From BpId' },
+      { id: 'uplineId', title: 'Upline ID' },
+      { id: 'relationshipType', title: 'Relationship Type' },
+      { id: 'contractCode', title: 'Contract Code' },
+      { id: 'from', title: 'From' },
+      { id: 'to', title: 'To' },
+    ],
+  });
 
   async getHierarchy(
     producerId: string,
@@ -147,12 +165,12 @@ export class ProducerHierarchyService {
   ): Promise<void> {
     const producerId = producerHierarchyPayload.producerId;
 
-    await this.neo4jService.write(
-      `MERGE (p:Producer {id: $producerId}) RETURN p`,
-      {
-        producerId: producerId,
-      },
-    );
+    // await this.neo4jService.write(
+    //   `MERGE (p:Producer {id: $producerId}) RETURN p`,
+    //   {
+    //     producerId: producerId,
+    //   },
+    // );
 
     const uplines = producerHierarchyPayload.uplines;
     await this.addUplines('Producer', producerId, uplines);
@@ -171,19 +189,38 @@ export class ProducerHierarchyService {
       return;
     }
     for (const upline of uplines) {
-      await this.neo4jService.write(
-        `MATCH (f {id: $fromBpId}) MERGE (t:Upline {id: $uplineId}) MERGE (f)-[r:${upline.relationshipType} {contractCode: $contractCode, from: $from, to: $to}]->(t) ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`,
-        {
-          fromType: fromType,
-          fromBpId: fromBpId,
-          uplineId: upline.id,
-          contractCode: upline.contractCode,
-          from: upline.from,
-          to: upline.to,
-        },
-      );
+      // await this.neo4jService.write(
+      //   `MATCH (f {id: $fromBpId}) MERGE (t:Upline {id: $uplineId}) MERGE (f)-[r:${upline.relationshipType} {contractCode: $contractCode, from: $from, to: $to}]->(t) ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`,
+      //   {
+      //     fromType: fromType,
+      //     fromBpId: fromBpId,
+      //     uplineId: upline.id,
+      //     contractCode: upline.contractCode,
+      //     from: upline.from,
+      //     to: upline.to,
+      //   },
+      // );
+      const record = {
+        fromBpId: fromBpId,
+        uplineId: upline.id,
+        relationshipType: upline.relationshipType,
+        contractCode: upline.contractCode,
+        from: upline.from,
+        to: upline.to,
+      };
+      await this.writer.writeRecords([record]);
       await this.addUplines('Upline', upline.id, upline.uplines);
     }
+  }
+
+  async deleteHierarchy(producerId: string) {
+    await this.neo4jService.write(
+      `MATCH (p:Producer {id:$producerId})
+              DETACH DELETE p`,
+      {
+        producerId: producerId,
+      },
+    );
   }
 
   async seedData(count = 100): Promise<void> {
@@ -191,22 +228,20 @@ export class ProducerHierarchyService {
     let producerIdStart = 1000000000;
     const uplineIdStart = 1050000000;
     const bu = 'MMFACareer';
+    this.logger.log(`__direname -  ${this.dirPath}`);
     for (let i = 0; i < count; i++) {
       const producerId = producerIdStart++;
       const payload: ProducerHierarchyPayload = {
         producerId: producerId.toString(),
         businessUnit: bu,
-        uplines: this.generateSeedUplines(uplineIdStart, undefined),
+        uplines: this.generateSeedUplines(undefined),
       };
       this.logger.log(`Adding hierarchy for producer ${producerId}`);
       await this.addHierarchy(payload);
     }
   }
 
-  generateSeedUplines(
-    uplineIdStart: number,
-    depth: number | undefined,
-  ): ProducerUplineRecord[] {
+  generateSeedUplines(depth: number | undefined): ProducerUplineRecord[] {
     const uplines: ProducerUplineRecord[] = [];
     if (depth !== undefined && depth <= 0) {
       return uplines;
@@ -218,7 +253,7 @@ export class ProducerHierarchyService {
         uplineDepth = this.generateRandomUplineDepth(5);
       }
       uplineDepth--;
-      const uplineId = uplineIdStart++;
+      const uplineId = this.uplineIdStart++;
       const fromYear = this.getRandomFromYear();
       const fromDateStr = fromYear + '-08-07T00:00:00Z';
       const toDateStr = this.getRandomToYear(fromYear) + '-08-07T00:00:00Z';
@@ -228,7 +263,7 @@ export class ProducerHierarchyService {
         from: fromDateStr,
         to: toDateStr,
         relationshipType: this.getRandomRelationshipType(),
-        uplines: this.generateSeedUplines(uplineIdStart, uplineDepth),
+        uplines: this.generateSeedUplines(uplineDepth),
       };
       uplines.push(uplineRecord);
     }
