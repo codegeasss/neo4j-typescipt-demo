@@ -165,51 +165,61 @@ export class ProducerHierarchyService {
   ): Promise<void> {
     const producerId = producerHierarchyPayload.producerId;
 
-    // await this.neo4jService.write(
-    //   `MERGE (p:Producer {id: $producerId}) RETURN p`,
-    //   {
-    //     producerId: producerId,
-    //   },
-    // );
-
     const uplines = producerHierarchyPayload.uplines;
-    await this.addUplines('Producer', producerId, uplines);
+    const producerUplineParams:object[] = [];
+    const agencyUplineParams:object[] = [];
+    await this.addUplines('Producer', producerId, uplines, producerUplineParams, agencyUplineParams);
+    await this.neo4jService.batchWrite(
+        producerUplineParams, agencyUplineParams
+    );
   }
 
   async deleteAllData() {
-    await this.neo4jService.write('MATCH (n) DETACH DELETE n', {});
+    await this.neo4jService.write('MATCH (n) DETACH DELETE n', [{}]);
   }
 
   async addUplines(
     fromType: string,
     fromBpId: string,
     uplines: ProducerUplineRecord[],
+    producerUplineParams: object[],
+    agencyUplineParams: object[]
   ) {
     if (!uplines || uplines.length === 0) {
       return;
     }
     for (const upline of uplines) {
-      // await this.neo4jService.write(
-      //   `MATCH (f {id: $fromBpId}) MERGE (t:Upline {id: $uplineId}) MERGE (f)-[r:${upline.relationshipType} {contractCode: $contractCode, from: $from, to: $to}]->(t) ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`,
-      //   {
-      //     fromType: fromType,
-      //     fromBpId: fromBpId,
-      //     uplineId: upline.id,
-      //     contractCode: upline.contractCode,
-      //     from: upline.from,
-      //     to: upline.to,
-      //   },
-      // );
-      const record = {
-        fromBpId: fromBpId,
-        uplineId: upline.id,
-        relationshipType: upline.relationshipType,
-        contractCode: upline.contractCode,
-        from: upline.from,
-        to: upline.to,
-      };
-      await this.writer.writeRecords([record]);
-      await this.addUplines('Upline', upline.id, upline.uplines);
+      if('Producer' === fromType) {
+        producerUplineParams.push({
+          fromType: fromType,
+          fromBpId: fromBpId,
+          uplineId: upline.id,
+          relationshipType: upline.relationshipType,
+          contractCode: upline.contractCode,
+          from: upline.from,
+          to: upline.to,
+        });
+      } else {
+        agencyUplineParams.push({
+          fromType: fromType,
+          fromBpId: fromBpId,
+          uplineId: upline.id,
+          relationshipType: upline.relationshipType,
+          contractCode: upline.contractCode,
+          from: upline.from,
+          to: upline.to,
+        });
+      }
+      // const record = {
+      //   fromBpId: fromBpId,
+      //   uplineId: upline.id,
+      //   relationshipType: upline.relationshipType,
+      //   contractCode: upline.contractCode,
+      //   from: upline.from,
+      //   to: upline.to,
+      // };
+      // await this.writer.writeRecords([record]);
+      await this.addUplines('Upline', upline.id, upline.uplines, producerUplineParams, agencyUplineParams);
     }
   }
 
@@ -217,16 +227,17 @@ export class ProducerHierarchyService {
     await this.neo4jService.write(
       `MATCH (p:Producer {id:$producerId})
               DETACH DELETE p`,
-      {
+      [{
         producerId: producerId,
-      },
+      }],
     );
   }
 
   async seedData(count = 100): Promise<void> {
+    const startTime = performance.now();
+    this.uplineIdStart = 1050000000;
     await this.deleteAllData();
     let producerIdStart = 1000000000;
-    const uplineIdStart = 1050000000;
     const bu = 'MMFACareer';
     this.logger.log(`__direname -  ${this.dirPath}`);
     for (let i = 0; i < count; i++) {
@@ -234,11 +245,13 @@ export class ProducerHierarchyService {
       const payload: ProducerHierarchyPayload = {
         producerId: producerId.toString(),
         businessUnit: bu,
-        uplines: this.generateSeedUplines(undefined),
+        uplines: this.generateSeedUplines(undefined ),
       };
       this.logger.log(`Adding hierarchy for producer ${producerId}`);
       await this.addHierarchy(payload);
     }
+    const endTime = performance.now();
+    this.logger.log(`Total time - ${endTime - startTime} milliseconds`);
   }
 
   generateSeedUplines(depth: number | undefined): ProducerUplineRecord[] {

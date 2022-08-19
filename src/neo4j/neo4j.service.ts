@@ -34,11 +34,53 @@ export class Neo4jService {
 
   async write(
     cypher: string,
-    params: Record<string, any>,
+    params: Record<string, any>[],
     database?: string,
-  ): Promise<Result> {
+  ): Promise<void> {
     const session = this.getWriteSession(database);
-    return session.run(cypher, params);
+    for(const param of params) {
+      await session.run(cypher, param);
+    }
+  }
+
+  async batchWrite(producerUplines: object[], agencyUplines: object[], database?: string,) {
+    const session = this.getWriteSession(database);
+    const canSellUnderProducerUplines = producerUplines.filter((p) => {
+      return p['relationshipType'] === 'CAN_SELL_UNDER';
+    });
+    const canSellUnderAgencyUplines = agencyUplines.filter((p) => {
+      return p['relationshipType'] === 'CAN_SELL_UNDER';
+    });
+    const canSellUnderProducerQuery = `UNWIND $canSellUnderProducerUplines as node 
+    MERGE (f:Producer {id: node.fromBpId}) 
+    MERGE (t:Upline {id: node.uplineId}) 
+    MERGE (f)-[r:CAN_SELL_UNDER {contractCode: node.contractCode, from: node.from, to: node.to}]->(t) 
+    ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`;
+    await session.run(canSellUnderProducerQuery, {canSellUnderProducerUplines : canSellUnderProducerUplines});
+    const canSellUnderAgencyQuery = `UNWIND $canSellUnderAgencyUplines as node 
+    MERGE (f:Upline {id: node.fromBpId}) 
+    MERGE (t:Upline {id: node.uplineId}) 
+    MERGE (f)-[r:CAN_SELL_UNDER {contractCode: node.contractCode, from: node.from, to: node.to}]->(t) 
+    ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`;
+    await session.run(canSellUnderAgencyQuery, {canSellUnderAgencyUplines : canSellUnderAgencyUplines});
+    const canProxyProducerUplines = producerUplines.filter((p) => {
+      return p['relationshipType'] === 'CAN_PROXY';
+    });
+    const canProxyAgencyUplines = agencyUplines.filter((p) => {
+      return p['relationshipType'] === 'CAN_PROXY';
+    });
+    const canProxyProducerQuery = `UNWIND $canProxyProducerUplines as node 
+    MERGE (f:Producer {id: node.fromBpId}) 
+    MERGE (t:Upline {id: node.uplineId}) 
+    MERGE (f)-[r:CAN_PROXY {contractCode: node.contractCode, from: node.from, to: node.to}]->(t) 
+    ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`;
+    await session.run(canProxyProducerQuery, {canProxyProducerUplines : canProxyProducerUplines});
+    const canProxyAgencyQuery = `UNWIND $canProxyAgencyUplines as node 
+    MERGE (f:Upline {id: node.fromBpId}) 
+    MERGE (t:Upline {id: node.uplineId}) 
+    MERGE (f)-[r:CAN_PROXY {contractCode: node.contractCode, from: node.from, to: node.to}]->(t) 
+    ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`;
+    await session.run(canProxyAgencyQuery, {canProxyAgencyUplines : canProxyAgencyUplines});
   }
 
   getConfig(): Neo4jConfig {
