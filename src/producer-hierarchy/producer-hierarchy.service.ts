@@ -74,6 +74,24 @@ export class ProducerHierarchyService {
     ],
   });
 
+  async getHierarchyPercentile(count: number, percentile: number): Promise<number> {
+    let producerId = 1000000000;
+    const latencies: number[] = [];
+    for (let i = 0; i < count; i++) {
+      producerId++;
+      this.logger.log(`Getting hierarchy for producer ${producerId}`);
+      const startTime = performance.now();
+      await this.getHierarchy(producerId.toString(), '2022-09-19T00:00:00', 'CAN_SELL_UNDER', 5);
+      const endTime = performance.now();
+      latencies.push(endTime - startTime);
+    }
+    latencies.sort((a, b) => {
+      return a - b;
+    });
+    const idx = Math.floor(percentile/100 * count);
+    return latencies[idx - 1];
+  }
+
   async getHierarchy(
     producerId: string,
     asOfDate: string,
@@ -169,7 +187,7 @@ export class ProducerHierarchyService {
     const producerUplineParams:object[] = [];
     const agencyUplineParams:object[] = [];
     await this.addUplines('Producer', producerId, uplines, producerUplineParams, agencyUplineParams);
-    await this.neo4jService.batchWrite(
+    await this.neo4jService.writeHierarchyBatch(
         producerUplineParams, agencyUplineParams
     );
   }

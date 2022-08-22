@@ -23,7 +23,7 @@ export class ProducerHierarchyController {
     private readonly producerHierarchyService: ProducerHierarchyService,
   ) {}
 
-  @Get('/:producerId')
+  @Get('/producer/:producerId')
   async getHierarchy(
     @Param('producerId') producerId: string,
     @Query('asOfDate') asOfDate: string,
@@ -41,7 +41,7 @@ export class ProducerHierarchyController {
     );
   }
 
-  @Post('/')
+  @Post('/producer')
   async addHierarchy(
     @Request() request,
     @Body() producerHierarchyPayload: ProducerHierarchyPayload,
@@ -59,7 +59,7 @@ export class ProducerHierarchyController {
     };
   }
 
-  @Delete('/:producerId')
+  @Delete('producer/:producerId')
   async deleteHierarchy(
     @Param('producerId') producerId: string,
   ): Promise<object> {
@@ -85,5 +85,16 @@ export class ProducerHierarchyController {
       statusCode: HttpStatus.OK,
       message: `Successfully seeded hierarchy data`,
     };
+  }
+
+  @Get('/percentile')
+  async getHierarchyPercentile(
+      @Query('count') count: number,
+      @Query('percentile') percentile: number,
+  ): Promise<number> {
+    return this.producerHierarchyService.getHierarchyPercentile(
+        count,
+        percentile
+    );
   }
 }

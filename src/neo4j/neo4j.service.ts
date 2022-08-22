@@ -43,7 +43,7 @@ export class Neo4jService {
     }
   }
 
-  async batchWrite(producerUplines: object[], agencyUplines: object[], database?: string,) {
+  async writeHierarchyBatch(producerUplines: object[], agencyUplines: object[], database?: string,) {
     const session = this.getWriteSession(database);
     const canSellUnderProducerUplines = producerUplines.filter((p) => {
       return p['relationshipType'] === 'CAN_SELL_UNDER';
