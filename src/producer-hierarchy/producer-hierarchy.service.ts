@@ -28,6 +28,7 @@ export class HierarchyUplineResponse {
   contractCode: string;
   from: Date;
   to: Date;
+  relationshipType: string;
   uplines: HierarchyUplineResponse[];
   constructor(partial: Partial<HierarchyUplineResponse>) {
     Object.assign(this, partial);
@@ -81,7 +82,7 @@ export class ProducerHierarchyService {
       producerId++;
       this.logger.log(`Getting hierarchy for producer ${producerId}`);
       const startTime = performance.now();
-      await this.getHierarchy(producerId.toString(), '2022-09-19T00:00:00', 'CAN_SELL_UNDER', 5);
+      await this.getHierarchy(producerId.toString(), '2022-09-19T00:00:00', 'CAN_SELL_UNDER', 1);
       const endTime = performance.now();
       latencies.push(endTime - startTime);
     }
@@ -124,6 +125,7 @@ export class ProducerHierarchyService {
           contractCode: parent['contractCode'],
           from: parent['from'],
           to: parent['to'],
+          relationshipType: parent['relationshipType'],
           uplines: this.getUplines(parent['parents']),
         }),
       );
@@ -137,11 +139,15 @@ export class ProducerHierarchyService {
     relationshipType: string,
     maxDepth: number,
   ): Promise<object> {
+    let relTypeCritera =  '';
+    if(relationshipType) {
+      relTypeCritera =  'AND type(rel) = $relationshipType';
+    }
     const res = await this.neo4jService.read(
       `Match p = (a)-[r * 1..${maxDepth}]->(u)
             WHERE a.id = $producerId AND
             all(rel in r where rel.from <= $asOfDate AND
-            rel.to >= $asOfDate AND type(rel) = $relationshipType)
+            rel.to >= $asOfDate ${relTypeCritera})
             RETURN ID(a) as id, a.id as producerId, collect(p) as relationships`,
       {
         producerId: producerId,
@@ -169,6 +175,7 @@ export class ProducerHierarchyService {
             contractCode: relationshipProps['contractCode'],
             from: relationshipProps['from'],
             to: relationshipProps['to'],
+            relationshipType: segment['relationship']['type'],
             parents: {},
           };
         }
