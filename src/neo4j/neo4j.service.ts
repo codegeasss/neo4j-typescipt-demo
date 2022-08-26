@@ -34,13 +34,11 @@ export class Neo4jService {
 
   async write(
     cypher: string,
-    params: Record<string, any>[],
+    params: Record<string, any>,
     database?: string,
   ): Promise<void> {
     const session = this.getWriteSession(database);
-    for(const param of params) {
-      await session.run(cypher, param);
-    }
+    await session.run(cypher, params);
   }
 
   async writeHierarchyBatch(producerUplines: object[], agencyUplines: object[], database?: string,) {

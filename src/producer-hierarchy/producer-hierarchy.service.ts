@@ -182,63 +182,44 @@ export class ProducerHierarchyService {
     producerHierarchyPayload: ProducerHierarchyPayload,
   ): Promise<void> {
     const producerId = producerHierarchyPayload.producerId;
-
-    const uplines = producerHierarchyPayload.uplines;
-    const producerUplineParams:object[] = [];
-    const agencyUplineParams:object[] = [];
-    await this.addUplines('Producer', producerId, uplines, producerUplineParams, agencyUplineParams);
-    await this.neo4jService.writeHierarchyBatch(
-        producerUplineParams, agencyUplineParams
+    await this.neo4jService.write(
+      `MERGE (p:Producer {id: $producerId}) RETURN p`,
+      {
+        producerId: producerId,
+      },
     );
-  }
+    const uplines = producerHierarchyPayload.uplines;
 
-  async deleteAllData() {
-    await this.neo4jService.write('MATCH (n) DETACH DELETE n', [{}]);
+    await this.addUplines('Producer', producerId, uplines);
+
   }
 
   async addUplines(
-    fromType: string,
-    fromBpId: string,
-    uplines: ProducerUplineRecord[],
-    producerUplineParams: object[],
-    agencyUplineParams: object[]
+      fromType: string,
+      fromBpId: string,
+      uplines: ProducerUplineRecord[],
   ) {
     if (!uplines || uplines.length === 0) {
       return;
     }
     for (const upline of uplines) {
-      if('Producer' === fromType) {
-        producerUplineParams.push({
+      await this.neo4jService.write(
+        `MATCH (f {id: $fromBpId}) MERGE (t:Upline {id: $uplineId}) MERGE (f)-[r:${upline.relationshipType} {contractCode: $contractCode, from: $from, to: $to}]->(t) ON CREATE SET r.createdAt = datetime() ON MATCH SET r.updatedAt = datetime()`,
+        {
           fromType: fromType,
           fromBpId: fromBpId,
           uplineId: upline.id,
-          relationshipType: upline.relationshipType,
           contractCode: upline.contractCode,
           from: upline.from,
           to: upline.to,
-        });
-      } else {
-        agencyUplineParams.push({
-          fromType: fromType,
-          fromBpId: fromBpId,
-          uplineId: upline.id,
-          relationshipType: upline.relationshipType,
-          contractCode: upline.contractCode,
-          from: upline.from,
-          to: upline.to,
-        });
-      }
-      // const record = {
-      //   fromBpId: fromBpId,
-      //   uplineId: upline.id,
-      //   relationshipType: upline.relationshipType,
-      //   contractCode: upline.contractCode,
-      //   from: upline.from,
-      //   to: upline.to,
-      // };
-      // await this.writer.writeRecords([record]);
-      await this.addUplines('Upline', upline.id, upline.uplines, producerUplineParams, agencyUplineParams);
+        },
+      );
+      await this.addUplines('Upline', upline.id, upline.uplines);
     }
+  }
+
+  async deleteAllData() {
+    await this.neo4jService.write('MATCH (n) DETACH DELETE n', {});
   }
 
   async deleteHierarchy(producerId: string) {
@@ -266,7 +247,7 @@ export class ProducerHierarchyService {
         uplines: this.generateSeedUplines(undefined ),
       };
       this.logger.log(`Adding hierarchy for producer ${producerId}`);
-      await this.addHierarchy(payload);
+      await this.addHierarchyBatch(payload);
     }
     const endTime = performance.now();
     this.logger.log(`Total time - ${endTime - startTime} milliseconds`);
@@ -299,6 +280,56 @@ export class ProducerHierarchyService {
       uplines.push(uplineRecord);
     }
     return uplines;
+  }
+
+  async addHierarchyBatch(
+      producerHierarchyPayload: ProducerHierarchyPayload,
+  ): Promise<void> {
+    const producerId = producerHierarchyPayload.producerId;
+
+    const uplines = producerHierarchyPayload.uplines;
+    const producerUplineParams:object[] = [];
+    const agencyUplineParams:object[] = [];
+    this.populateUplineParams('Producer', producerId, uplines, producerUplineParams, agencyUplineParams);
+    await this.neo4jService.writeHierarchyBatch(
+        producerUplineParams, agencyUplineParams
+    );
+  }
+
+  populateUplineParams(
+      fromType: string,
+      fromBpId: string,
+      uplines: ProducerUplineRecord[],
+      producerUplineParams: object[],
+      agencyUplineParams: object[]
+  ) {
+    if (!uplines || uplines.length === 0) {
+      return;
+    }
+    for (const upline of uplines) {
+      if('Producer' === fromType) {
+        producerUplineParams.push({
+          fromType: fromType,
+          fromBpId: fromBpId,
+          uplineId: upline.id,
+          relationshipType: upline.relationshipType,
+          contractCode: upline.contractCode,
+          from: upline.from,
+          to: upline.to,
+        });
+      } else {
+        agencyUplineParams.push({
+          fromType: fromType,
+          fromBpId: fromBpId,
+          uplineId: upline.id,
+          relationshipType: upline.relationshipType,
+          contractCode: upline.contractCode,
+          from: upline.from,
+          to: upline.to,
+        });
+      }
+      this.populateUplineParams('Upline', upline.id, upline.uplines, producerUplineParams, agencyUplineParams);
+    }
   }
 
   generateRandomUplineCount(max: number): number {
